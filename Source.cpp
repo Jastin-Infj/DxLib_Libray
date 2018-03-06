@@ -23,6 +23,12 @@ struct Chara
 		PA    = 8							//パー
 	};
 	int flag;                               //1　ニュートラル　2　グー　4　チョキ　8　パー
+	enum WIN_OR_LOSS
+	{
+		WIN  = 1,								//勝ち
+		LOSS = 2,								//負け
+		Draw = 3,								//引き分け
+	};
 }chara;
 
 const int MOMEY = 1000;                     //初期所持金
@@ -39,9 +45,10 @@ void Initial_Parameter_Display(bool setup);
 int Input();
 bool Rate();
 int Random(Chara* pl);
-bool SetUp();
+bool SetUp();//続きかどうかを判定する引数
 void Substitution(int value, char* target);
-void VictoryDecision();
+int VictoryDecision();
+unsigned int Momey(int w_or_l);
 void Debag_Output(char* Debag_name);
 
 //関数ポインタ
@@ -51,9 +58,17 @@ void(*Game_Scece[4])() = { Initialize,Title,GameMain,Ending };
 bool SetUp()                            //初期化処理　データの読み込み
 {
     cout << "パラメータの設定をします" << endl << endl;
-    chara.momey = MOMEY;
-    chara.flag = FLAG;
-    chara.next = (Chara*)malloc(sizeof(Chara));       // もう一人のキャラを追加する
+	if ((chara.flag & (Chara::GU | Chara::TYOKI | Chara::PA)) != 0)//もう一度続けた場合
+	{
+		chara.flag = FLAG;
+		chara.next = (Chara*)malloc(sizeof(Chara));       // もう一人のキャラを追加する
+	}
+	else
+	{
+		chara.momey = MOMEY;
+		chara.flag = FLAG;
+		chara.next = (Chara*)malloc(sizeof(Chara));       // もう一人のキャラを追加する
+	}
     return true;
 }
 void Initialize()                       //初期化処理
@@ -151,17 +166,69 @@ void Substitution(int value ,char* target)
 		chara.next->flag |= PATTEN[value];
 	}
 }
-void VictoryDecision()
+int VictoryDecision()
 {
 	if (chara.flag & chara.next->flag)  //if文の性質上　0以外ならtrue
 	{
 		cout << "あいこ" << endl;
-		return;	
+		return Chara::Draw;	
 	}
-	if (chara.flag & (chara.GU | (chara.next->flag & chara.GU)))//相手がグーであり　判定できない
+	switch (chara.flag)
 	{
-		
+	case Chara::GU:
+		if ((chara.next->flag & Chara::TYOKI) == Chara::TYOKI)
+		{
+			cout << "あなたの勝ちです" << endl;
+			return Chara::WIN;
+		}
+		else
+		{
+			cout << "あなたの負けです" << endl;
+			return Chara::LOSS;
+		}
+		break;
+	case Chara::TYOKI:
+		if ((chara.next->flag & Chara::PA) == Chara::PA)
+		{
+			cout << "あなたの勝ちです" << endl;
+			return Chara::WIN;
+		}
+		else
+		{
+			cout << "あなたの負けです" << endl;
+			return Chara::LOSS;
+		}
+		break;
+	case Chara::PA:
+		if ((chara.next->flag & Chara::GU) == Chara::GU)
+		{
+			cout << "あなたの勝ちです" << endl;
+			return Chara::WIN;
+		}
+		else
+		{
+			cout << "あなたの負けです" << endl;
+			return Chara::LOSS;
+		}
+		break;
 	}
+	return Chara::N;
+}
+unsigned int Momey(int w_or_l)
+{
+	switch (w_or_l)
+	{
+	case Chara::WIN:
+		return chara.rate*2;
+		break;
+	case Chara::LOSS:
+		return 0;
+		break;
+	case Chara::Draw:
+		return chara.rate;
+		break;
+	}
+	return 0;
 }
 void GameMain()                         //関数ポインタで行う　マスター更新処理
 {
@@ -184,18 +251,21 @@ void GameMain()                         //関数ポインタで行う　マスター更新処理
         value = Input();
         if (value != 0)
         {
-			Substitution(value, "Chara");
+			Substitution(value, "Chara");//自分で決めたじゃんけんパターンを取得する
             break;
         }
     }
     Initial_Parameter_Display(true);
     
-	Substitution(Random(&chara), "Enemy");
+	Substitution(Random(&chara), "Enemy");//相手の乱数からじゃんけんパターンを決める
 
 	Debag_Output("2bit");//デバッグモード
 
-	VictoryDecision();
-    //現在の時間を取得して乱数表として当てはめる
+	int win_or_loss = VictoryDecision();//勝敗をジャッジする
+
+	chara.momey += Momey(win_or_loss);//勝敗からお金のやりとりをする
+
+	Debag_Output("お金");
     Game_Scece[ENDING]();
 }
 void Ending()
@@ -203,7 +273,34 @@ void Ending()
     cout << "エンディング" << endl << endl;
     free(chara.next);
     chara.next = nullptr;
-    cout << "ゲームを終了します" << endl << endl;
+	int value = 0;
+	while (!value)
+	{
+		if (chara.momey <= 0)
+		{
+			cout << "ゲーム終了　所持金がなくなりました" << endl;
+			chara.flag = Chara::N;
+			cout << "ゲームをやり直しますか？" << endl;
+		}
+		else
+		{
+			cout << "ゲームを続けますか？" << endl << endl;
+		}
+		cout << "１　はい　２　いいえ  ";
+		cin >> value;
+		if (!(value == 1 || value == 2))
+		{
+			cout << "もう一度行ってください" << endl;
+		}
+		else
+		{
+			break;
+		}
+	}
+	if (value == 1)
+	{
+		Game_Scece[INITIALIZE]();
+	}
 }
 void main()
 {
@@ -249,6 +346,10 @@ void Debag_Output(char* Debag_name)
 			break;
 		}
 		cout << "相手のじゃんけんパターン :  " << str1 << endl;
+	}
+	if (Debag_name == "お金")
+	{
+		cout << "現在のお金：　"<<(signed)chara.momey << "円" << endl;
 	}
 	cout << endl;
 }
